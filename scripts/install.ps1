@@ -1,25 +1,33 @@
 # scripts/install.ps1
+
+# --- Configuration ---
 $AppName = "serial_debugger"
 $InstallDir = "$([Environment]::GetFolderPath('UserProfile'))\.local\bin"
 $SourcePath = "..\release\$AppName.exe"
 
+# --- Script Body ---
 Write-Host "Starting installation for $AppName..."
 
-$currentUser = New-Object Security.Principal.WindowsPrincipal $(New-Object Security.Principal.WindowsIdentity).GetCurrent()
-if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Error: Please run this script as an Administrator." -ForegroundColor Red
-    Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+# 1. Check for Administrator Privileges (Robust Method)
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Error: This script needs to be run with Administrator privileges." -ForegroundColor Red
+    Write-Host "Please right-click the install.bat file and choose 'Run as administrator'."
+    Read-Host "Press Enter to exit..."
     exit
 }
 
+
+# 2. Create the installation directory if it doesn't exist
 if (-not (Test-Path $InstallDir)) {
     Write-Host "Creating directory: $InstallDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 }
 
+# 3. Copy the executable
 Write-Host "Copying executable to $InstallDir"
 Copy-Item -Path $SourcePath -Destination $InstallDir -Force
 
+# 4. Add the directory to the User's PATH if it's not already there
 Write-Host "Updating PATH environment variable..."
 $CurrentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
@@ -32,3 +40,5 @@ if ($CurrentUserPath -notlike "*$InstallDir*") {
 }
 
 Write-Host "`nInstallation complete! Please restart your terminal to use the '$AppName' command."
+# Add a pause so the user can read the output
+Read-Host "Press Enter to close."
