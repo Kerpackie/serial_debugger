@@ -1,0 +1,3 @@
+@echo off
+ECHO Running the PowerShell installer...
+powershell -ExecutionPolicy Bypass -File ".\scripts\install.ps1"
