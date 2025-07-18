@@ -1,5 +1,5 @@
 =========================
-Serial Debugger v1.1
+Serial Debugger v0.2.0
 =========================
 
 Thank you for downloading Serial Debugger!
