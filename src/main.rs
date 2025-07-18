@@ -141,21 +141,58 @@ fn main() -> Result<(), String> {
         // --- FIXED LENGTH MODE ---
         let mut frame_buffer = vec![0; args.length];
         loop {
-            match port.read_exact(&mut frame_buffer) {
-                Ok(_) => {
-                    process_frame(
-                        &frame_buffer,
-                        &args,
-                        &mut hex_output_file,
-                        &mut raw_output_file,
-                        &mut generic_output_file,
-                    );
+            // 1. Find the first non-space byte to start the frame
+            loop {
+                let mut first_byte_buf = [0u8; 1];
+                match port.read_exact(&mut first_byte_buf) {
+                    Ok(_) => {
+                        if first_byte_buf[0] != b' ' { // b' ' is 0x20
+                            // Found the start of the frame.
+                            frame_buffer[0] = first_byte_buf[0];
+                            break; // Exit the "find start" loop
+                        }
+                        // It was a space, so loop again to read the next byte.
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::TimedOut => continue,
+                    Err(e) => {
+                        eprintln!("\nA serial port error occurred while waiting for frame: {}", e);
+                        return Ok(());
+                    }
                 }
-                Err(ref e) if e.kind() == io::ErrorKind::TimedOut => continue,
-                Err(e) => {
-                    eprintln!("\nA serial port error occurred: {}", e);
-                    break;
+            }
+
+            // 2. Read the remaining N-1 bytes of the frame
+            if args.length > 1 {
+                let remaining_bytes = &mut frame_buffer[1..];
+                match port.read_exact(remaining_bytes) {
+                    Ok(_) => {
+                        // Full frame is now in frame_buffer. Process it.
+                        process_frame(
+                            &frame_buffer,
+                            &args,
+                            &mut hex_output_file,
+                            &mut raw_output_file,
+                            &mut generic_output_file,
+                        );
+                    }
+                    Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
+                        eprintln!("\nTimed out while reading frame data. Discarding partial frame.");
+                        continue; // Go back to waiting for the next frame
+                    }
+                    Err(e) => {
+                        eprintln!("\nA serial port error occurred while reading frame data: {}", e);
+                        break; // Exit the main loop
+                    }
                 }
+            } else {
+                // The frame length is just 1, we already have it.
+                process_frame(
+                    &frame_buffer,
+                    &args,
+                    &mut hex_output_file,
+                    &mut raw_output_file,
+                    &mut generic_output_file,
+                );
             }
         }
     } else {
@@ -170,16 +207,24 @@ fn main() -> Result<(), String> {
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
                     // Timeout means the frame has ended. Process it if we have data.
-                    if !dynamic_buffer.is_empty() {
+
+                    // Trim any trailing space characters from the end of the buffer
+                    let mut end = dynamic_buffer.len();
+                    while end > 0 && dynamic_buffer[end - 1] == b' ' {
+                        end -= 1;
+                    }
+                    let trimmed_frame = &dynamic_buffer[..end];
+
+                    if !trimmed_frame.is_empty() {
                         process_frame(
-                            &dynamic_buffer,
+                            trimmed_frame,
                             &args,
                             &mut hex_output_file,
                             &mut raw_output_file,
                             &mut generic_output_file,
                         );
-                        dynamic_buffer.clear(); // Clear for the next frame
                     }
+                    dynamic_buffer.clear(); // Clear for the next frame
                 }
                 Err(e) => {
                     eprintln!("\nA serial port error occurred: {}", e);
